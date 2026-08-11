@@ -1,5 +1,11 @@
 # Order Support Chatbot — Proof of Concept (POC)
 
+## 🚀 Live Demo
+**Try it now:** https://or-697adaebf85d49179f2552843e06a798.ecs.us-east-1.on.aws
+
+This is a real, working deployment on AWS (ECS Express Mode) — not a local-only demo.
+Ask it things like: "where is my order ORD1001", then a follow-up like "when does it arrive?"
+
 ## What this is (in plain English)
 
 This is a very small, working chatbot. A customer can type something
@@ -18,20 +24,20 @@ something you could actually run on a server.
 Think of it like a restaurant:
 
 1. **`app/orders.py` — the kitchen storage (data)**
-   A fake list of orders, like a mini database. In real life, this
-   would be swapped for a real database (like PostgreSQL).
+   Now backed by a real SQLite database (`orders.db`).
 
-2. **`app/chatbot.py` — the chef (the logic/brain)**
-   This reads what the customer typed, figures out "they're asking
-   about order status," pulls out the order ID if they gave one, looks
-   it up in the storage, and writes a friendly sentence back.
+2. **`app/anthropic_chatbot.py` — the chef (the logic/brain)**
+   Reads what the customer typed, uses real AI to figure out
+   "they're asking about order status," pulls out the order ID,
+   looks it up, and writes a friendly sentence back — with memory
+   of the conversation so far.
 
 3. **`app/main.py` — the waiter (the API)**
    This is the part other things (a website, a mobile app, WhatsApp)
    would actually "talk to." It receives the customer's message and
    sends back the chatbot's reply, as structured data (JSON).
 
-There's also `static/index.html` — a simple chat webpage, just so
+There's also `static/index.html` — a simple chat webpage, so
 you can see and test the chatbot with your eyes, not just with
 commands in a terminal.
 
@@ -39,145 +45,170 @@ commands in a terminal.
 
 ## What "request" and "response" actually look like
 
-This is the core of the POC — proof that asking "where is my order"
-gets the right answer.
+### Example — with conversation memory
 
-### Example 1 — customer gives an order ID
-
-**Request** (what the app/website sends to our chatbot):
+**Request 1:**
 ```json
-POST /chat
-{
-  "message": "where is my order ORD1001"
-}
+POST /chat-ai
+{ "message": "where is my order ORD1001" }
 ```
 
-**Response** (what the chatbot sends back):
+**Response 1:**
 ```json
 {
-  "reply": "Your order ORD1001 (Wireless Mouse) is currently: **Shipped**. Expected delivery date: 2026-08-10. You can track it with BlueDart, tracking ID BD998877.",
+  "reply": "Your order ORD1001 (Wireless Mouse) is currently: **Shipped**. Expected delivery date: 2026-08-13. You can track it with BlueDart, tracking ID BD998877.",
   "intent": "order_status",
-  "order_id": "ORD1001"
+  "order_id": "ORD1001",
+  "conversation_id": "50577128-6b32-418e-8478-ecd84a05d8a3"
 }
 ```
 
-### Example 2 — customer doesn't give an order ID
-
-**Request:**
-```json
-{ "message": "where is my order" }
-```
-
-**Response:**
+**Request 2 (follow-up, same conversation_id, no order number repeated):**
 ```json
 {
-  "reply": "I'd be happy to check that for you! Could you share your order ID? It usually looks like 'ORD1001'.",
+  "message": "when does it arrive?",
+  "conversation_id": "50577128-6b32-418e-8478-ecd84a05d8a3"
+}
+```
+
+**Response 2** — correctly resolves "it" to ORD1001 using conversation history:
+```json
+{
+  "reply": "Your order ORD1001 (Wireless Mouse) is currently: **Shipped**. Expected delivery date: 2026-08-13. You can track it with BlueDart, tracking ID BD998877.",
   "intent": "order_status",
-  "order_id": null
+  "order_id": "ORD1001",
+  "conversation_id": "50577128-6b32-418e-8478-ecd84a05d8a3"
 }
 ```
-
-### Example 3 — order ID doesn't exist
-
-**Request:**
-```json
-{ "message": "where is my order ORD9999" }
-```
-
-**Response:**
-```json
-{
-  "reply": "I couldn't find any order with ID ORD9999. Could you please double check the order number?",
-  "intent": "order_status",
-  "order_id": null
-}
-```
-
-### Example 4 — something unrelated
-
-**Request:**
-```json
-{ "message": "what is your refund policy" }
-```
-
-**Response:**
-```json
-{
-  "reply": "I'm still learning! Right now I can help you check your order status. Try asking something like: 'Where is my order ORD1001?'",
-  "intent": "unknown",
-  "order_id": null
-}
-```
-
-I ran all 4 of these for real while building this — they are actual
-tested outputs, not made up.
 
 ---
 
 ## How to run it yourself (locally, on your laptop)
 
-1. Install the requirements:
-   ```
-   pip install -r requirements.txt
-   ```
-2. Start the server:
-   ```
-   uvicorn app.main:app --reload
-   ```
-3. Open your browser to: `http://localhost:8000/`
-   You'll see the little chat webpage. Type: `where is my order ORD1001`
+1. Install dependencies with `uv`:
 
-You can also test it directly with curl (a terminal tool for sending
-web requests):
-```
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d "{\"message\": \"where is my order ORD1001\"}"
-```
+## How to run it yourself (locally, on your laptop)
+
+1. Install dependencies with `uv`:
+
+uv sync
+
+2. Create your `.env` file (copy `.env.example` and fill in your real `ANTHROPIC_API_KEY`)
+3. Start the server:
+4. Open your browser to: `http://localhost:8000/`
 
 ---
 
-## How to deploy it (make it live on the internet)
+## How this was actually deployed (ECS Express Mode)
 
-This project includes a `Dockerfile`. Docker is a way to "package"
-your app with everything it needs, so it runs the same way anywhere.
+This project is deployed using **Amazon ECS Express Mode** — AWS's simplified
+container deployment feature (the successor to App Runner, which stopped
+accepting new customers in April 2026). It handles the load balancer,
+HTTPS certificate, auto-scaling, and networking automatically — you only
+provide a container image.
 
-**Step 1 — Build the package:**
-```
+**To redeploy after making changes:**
+
+1. Build and push a new image to ECR:
+
+**To redeploy after making changes:**
+
+1. Build and push a new image to ECR:
+
 docker build -t order-chatbot .
-```
+docker tag order-chatbot:latest 617297630012.dkr.ecr.us-east-1.amazonaws.com/order-chatbot:latest
+docker push 617297630012.dkr.ecr.us-east-1.amazonaws.com/order-chatbot:latest
 
-**Step 2 — Run it:**
-```
-docker run -p 8000:8000 order-chatbot
-```
 
-**Step 3 — Put it on the internet.**
-Since this Docker image is standard, you can deploy it to any of
-these (you already know AWS, so these are the natural fits):
-- **AWS App Runner** — easiest option, just point it at your Docker image
-- **AWS ECS (Fargate)** — more control, still no servers to manage
-- **AWS Elastic Beanstalk** — simple if you want a "just works" option
+2. In the ECS console, go to your Express service → trigger a new deployment
+   (or update the service to pull the `:latest` tag again).
 
-For a true POC/demo, App Runner is the fastest path: you push your
-Docker image, and within a few minutes you get a public URL like
-`https://xxxx.us-east-1.awsapprunner.com` that anyone can chat with.
+**Environment variables configured on the live service:**
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `AWS_REGION`, `BEDROCK_MODEL_ID`
+(set directly in the ECS Express service configuration — not from a
+committed `.env` file, since secrets should never be baked into the image).
 
 ---
 
-## What this POC deliberately leaves out (on purpose, for now)
+## Current architecture (updated from the original simple version)
 
-To keep this focused and easy to understand, we did NOT include:
-- A real database (we used a fake Python dictionary instead)
-- User login/authentication (so `user_id` is optional and unused unless passed)
-- A real AI/LLM understanding the message (we used simple keyword matching)
-- Conversation memory (each message is handled fresh, with no history)
+This POC evolved through several stages, each proven working end-to-end:
 
-## Natural next steps, if you want to grow this later
+- **Understanding:** real AI (Claude, via Anthropic's API) instead of keyword
+  matching — understands casual, varied phrasing, not just fixed phrases.
+  (A Bedrock version also exists in `app/bedrock_chatbot.py`, ready to
+  switch back to once AWS Bedrock quota is provisioned — see that file's
+  docstring for the one-line import change needed in `main.py`.)
+- **Memory:** conversation-aware — follow-up questions like "when does it
+  arrive?" or "what's the tracking number?" correctly resolve to the order
+  discussed earlier in the same conversation (`app/memory_store.py`).
+- **Data:** a real SQLite database (`orders.db`), not a fake dictionary
+  (`app/database.py`, `app/orders.py`).
+- **Deployment:** live on AWS via Docker + ECS Express Mode (see above).
 
-- Swap `orders.py` to query a real database
-- Add login, so `user_id` is known automatically and the bot can say
-  "you have 2 orders, which one?" without the customer typing an ID
-- Swap the simple keyword-matching in `chatbot.py` for a real LLM call
-  (e.g., AWS Bedrock) so it understands messages written in more
-  natural, varied ways — not just fixed keyword phrases
-- Add conversation memory so it can handle follow-up questions like
-  "and what about my other one?"
+## What this POC still deliberately leaves out
+
+- User login/authentication (`user_id` is optional and unused unless passed)
+- A production-grade database (SQLite is real, but a live AWS deployment's
+  storage resets on container restart — AWS RDS would be the next step
+  for genuine persistence)
+- AI-generated reply text (replies are still template-based for
+  predictability — the AI's job is understanding intent, not writing
+  the final sentence)
+
+## Natural next steps, if you want to grow this further
+
+- Swap SQLite for AWS RDS (PostgreSQL) for real persistence across restarts
+- Add login, so `user_id` is known automatically
+- Let the AI generate more tailored final reply text (not just intent detection)
+- Switch back to Bedrock once AWS token quota is resolved (see
+  `app/bedrock_chatbot.py`)
+- Set up CI/CD (e.g. GitHub Actions) so pushing to `main` automatically
+  rebuilds and redeploys the ECS service
+
+
+  2. In the ECS console, go to your Express service → trigger a new deployment
+   (or update the service to pull the `:latest` tag again).
+
+**Environment variables configured on the live service:**
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `AWS_REGION`, `BEDROCK_MODEL_ID`
+(set directly in the ECS Express service configuration — not from a
+committed `.env` file, since secrets should never be baked into the image).
+
+---
+
+## Current architecture (updated from the original simple version)
+
+This POC evolved through several stages, each proven working end-to-end:
+
+- **Understanding:** real AI (Claude, via Anthropic's API) instead of keyword
+  matching — understands casual, varied phrasing, not just fixed phrases.
+  (A Bedrock version also exists in `app/bedrock_chatbot.py`, ready to
+  switch back to once AWS Bedrock quota is provisioned — see that file's
+  docstring for the one-line import change needed in `main.py`.)
+- **Memory:** conversation-aware — follow-up questions like "when does it
+  arrive?" or "what's the tracking number?" correctly resolve to the order
+  discussed earlier in the same conversation (`app/memory_store.py`).
+- **Data:** a real SQLite database (`orders.db`), not a fake dictionary
+  (`app/database.py`, `app/orders.py`).
+- **Deployment:** live on AWS via Docker + ECS Express Mode (see above).
+
+## What this POC still deliberately leaves out
+
+- User login/authentication (`user_id` is optional and unused unless passed)
+- A production-grade database (SQLite is real, but a live AWS deployment's
+  storage resets on container restart — AWS RDS would be the next step
+  for genuine persistence)
+- AI-generated reply text (replies are still template-based for
+  predictability — the AI's job is understanding intent, not writing
+  the final sentence)
+
+## Natural next steps, if you want to grow this further
+
+- Swap SQLite for AWS RDS (PostgreSQL) for real persistence across restarts
+- Add login, so `user_id` is known automatically
+- Let the AI generate more tailored final reply text (not just intent detection)
+- Switch back to Bedrock once AWS token quota is resolved (see
+  `app/bedrock_chatbot.py`)
+- Set up CI/CD (e.g. GitHub Actions) so pushing to `main` automatically
+  rebuilds and redeploys the ECS service
