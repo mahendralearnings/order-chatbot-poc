@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Order Support Chatbot - POC</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 40px; }
+  .chat-box { max-width: 480px; margin: auto; background: white; border-radius: 10px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+  .chat-header { background: #2563eb; color: white; padding: 16px; font-weight: bold; }
+  .messages { height: 380px; overflow-y: auto; padding: 16px; }
+  .msg { margin-bottom: 12px; max-width: 80%; padding: 10px 14px; border-radius: 10px; line-height: 1.4; }
+  .user { background: #2563eb; color: white; margin-left: auto; }
+  .bot { background: #e5e7eb; color: #111; margin-right: auto; }
+  .input-row { display: flex; border-top: 1px solid #eee; }
+  input { flex: 1; border: none; padding: 14px; font-size: 14px; }
+  input:focus { outline: none; }
+  button { background: #2563eb; color: white; border: none; padding: 0 20px; cursor: pointer; }
+  .hint { font-size: 12px; color: #888; padding: 0 16px 12px; }
+</style>
+</head>
+<body>
+  <div class="chat-box">
+    <div class="chat-header">Order Support Chatbot (POC)</div>
+    <div class="messages" id="messages"></div>
+    <div class="hint">Try: "where is my order ORD1001" or "track order ORD1003"</div>
+    <div class="hint" id="convo-indicator">No conversation started yet</div>
+    <div class="input-row">
+      <input id="input" placeholder="Type your message..." onkeydown="if(event.key==='Enter') sendMessage()">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+<script>
+// This stays in the browser's memory for as long as the page is open.
+// It's how the UI keeps the SAME conversation going across multiple messages.
+let conversationId = null;
+
+function addMessage(text, sender) {
+  const messages = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + sender;
+  div.innerText = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text) return;
+  addMessage(text, 'user');
+  input.value = '';
+
+  // This is the actual REQUEST sent to our chatbot API.
+  // Note: /chat-ai (not /chat) — this is the AI-powered, memory-aware endpoint.
+  // We include conversationId so the AI can see earlier messages, if any exist yet.
+  const response = await fetch('/chat-ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text, conversation_id: conversationId })
+  });
+
+  // This is the RESPONSE we get back
+  const data = await response.json();
+
+  // Save the conversation_id so the NEXT message continues this same conversation
+  conversationId = data.conversation_id;
+  document.getElementById('convo-indicator').innerText = 'Conversation ID: ' + conversationId;
+
+  addMessage(data.reply, 'bot');
+}
+
+// Greet the user on page load
+addMessage("Hi! I'm your order support assistant (AI-powered, with memory). Try: 'where is my order ORD1001', then ask a follow-up like 'when does it arrive?'", 'bot');
+</script>
+</body>
+</html>
